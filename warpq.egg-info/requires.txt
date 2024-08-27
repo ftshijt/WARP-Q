@@ -1,0 +1,9 @@
+librosa
+pyvad
+scikit-image
+speechpy
+soundfile
+pandas
+scikit-learn
+keras
+zipp

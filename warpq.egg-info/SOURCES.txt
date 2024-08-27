@@ -1,0 +1,10 @@
+LICENSE
+README.md
+setup.py
+WARPQ/WARPQmetric.py
+WARPQ/__init__.py
+warpq.egg-info/PKG-INFO
+warpq.egg-info/SOURCES.txt
+warpq.egg-info/dependency_links.txt
+warpq.egg-info/requires.txt
+warpq.egg-info/top_level.txt

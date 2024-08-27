@@ -9,7 +9,7 @@ import os
 import zipfile
 import tempfile
 import pickle
-import keras
+from pathlib import Path
 
 class warpqMetric(object):
     '''
@@ -23,11 +23,6 @@ class warpqMetric(object):
         Inputs:
         1) The self
         2) args: 
-            - mode: predict_csv or predict_file
-            - csv_input: input csv file name for predict_csv mode
-            - csv_ourput: output csv file name for predict_csv mode
-            - org: original speech file for predict_file mode
-            - deg: degraded speech file for predict_file mode
             - sr: sampling frequency, Hz
             - n_mfcc: number of MFCCs
             - fmax: cutoff frequency
@@ -46,7 +41,6 @@ class warpqMetric(object):
         # MFCC and DTW parameters
         self.win_length = int(0.032*self.args['sr']) #32 ms frame
         self.hop_length = int(0.004*self.args['sr']) #4 ms overlap
-        #self.hop_length = int(0.016*self.sr)
         self.dtw_metric = 'euclidean'
         self.n_fft = 2*self.win_length
         self.lifter = 3 
@@ -62,11 +56,17 @@ class warpqMetric(object):
         print('+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
         print('\nRun WARP-Q metric with:')
         print('- sr = ' + str(self.args['sr']) + ' Hz')
-        print('- ' + str(self.args['mode']) + ' mode')
     
-        # Load mapping model
-        print('- mapping raw quality scores onto MOS using a ML model')
-        self.load_model(args['mapping_model'])
+        # # Load mapping model
+        # print('- mapping raw quality scores onto MOS using a ML model')
+        # model_root_path = Path(os.path.dirname(__file__)).parent
+        # if args['mapping_model'] == "default":
+        #     model_path = model_root_path / "models/RandomForest/Genspeech_TCDVoIP_PSup23.zip"
+        #     args["mapping_model"] = ".models/RandomForest/Genspeech_TCDVoIP_PSup23.zip"
+        # else:
+        #     model_path = model_root_path / args["mapping_model"]
+        # assert os.path.isfile(model_path), "model path {} not found, check installation".format(model_path)
+        # self.load_model(str(model_path))
         
            
     def load_model(self, zip_path):
@@ -86,27 +86,26 @@ class warpqMetric(object):
             # Read model
             isH5Exist = os.path.exists(os.path.join(tmpdirname, 'mapping_model.h5'))
             
-            if isH5Exist:
-                try: 
-                    self.mapping_model =  keras.models.load_model(os.path.join(tmpdirname, 'mapping_model.h5'))
-                except Exception as e:
-                    print(e)
-                    exit()
-                self.mapping_model_type = 'dnn_sequential'
-                print('Model is based on deep neural networks with a sequential stack regressor from Keras. It is trained using ' + os.path.basename(zip_path)[0:-4] + ' database \n')
-                self.mapping_model.summary()
-                print('\n')
+            # if isH5Exist:
+            #     try: 
+            #         self.mapping_model =  keras.models.load_model(os.path.join(tmpdirname, 'mapping_model.h5'))
+            #     except Exception as e:
+            #         print(e)
+            #         exit()
+            #     self.mapping_model_type = 'dnn_sequential'
+            #     print('Model is based on deep neural networks with a sequential stack regressor from Keras. It is trained using ' + os.path.basename(zip_path)[0:-4] + ' database \n')
+            #     self.mapping_model.summary()
+            #     print('\n')
             
-            else:
-                try: 
-                    self.mapping_model =  pickle.load(open(os.path.join(tmpdirname, 'mapping_model.pkl'), 'rb'))
-                except Exception as e:
-                    print(e)
-                    exit()
-                self.mapping_model_type = 'random_forest'
-                print("Model is based on a random forest regressor from Sklearn. It is trained using " + os.path.basename(zip_path)[0:-4] + ' database \n')
-                #print('\n')
-            
+            # else:
+            try: 
+                self.mapping_model =  pickle.load(open(os.path.join(tmpdirname, 'mapping_model.pkl'), 'rb'))
+            except Exception as e:
+                print(e)
+                exit()
+            self.mapping_model_type = 'random_forest'
+            print("Model is based on a random forest regressor from Sklearn. It is trained using " + os.path.basename(zip_path)[0:-4] + ' database \n')
+        
             try: # Read data scaler
                 self.data_scaler = pickle.load(open(os.path.join(tmpdirname, 'data_scaler.pkl'), 'rb'))
             except Exception as e:
@@ -204,7 +203,89 @@ class warpqMetric(object):
         
         return pd.DataFrame.from_dict([Acc_fea])
     
-    
+    def evaluate_versa(self, speech_Ref, speech_Coded):
+        ''' 
+        Compute WARP-Q score between two input speech signals
+        Inputs:
+        1) The self
+        2) refPath: reference speech
+        3) disPath: degraded speech 
+
+        Output:
+        WARP-Q quality score between refPath and disPath 
+        '''
+
+        if self.args['apply_vad']:
+            # VAD for Ref speech
+            vact1 = vad(speech_Ref, 
+                        self.args['sr'], 
+                        fs_vad = self.sr_vad, 
+                        hop_length = self.hop_size_vad, 
+                        vad_mode = self.aggresive)
+            
+            speech_Ref = speech_Ref[vact1==1]
+            
+            # VAD for Coded speech
+            vact2 = vad(speech_Coded, 
+                        self.args['sr'], 
+                        fs_vad = self.sr_vad, 
+                        hop_length = self.hop_size_vad, 
+                        vad_mode = self.aggresive)
+            
+            speech_Coded = speech_Coded[vact2==1]
+       
+        
+        # Compute MFCC features for the two signals
+        mfcc_Ref = librosa.feature.mfcc(y = speech_Ref,
+                                        sr = self.args['sr'],
+                                        n_mfcc = self.args['n_mfcc'],
+                                        fmax = self.args['fmax'],
+                                        n_fft = self.n_fft,
+                                        win_length = self.win_length,
+                                        hop_length = self.hop_length,
+                                        lifter = self.lifter)
+        
+        mfcc_Coded = librosa.feature.mfcc(y = speech_Coded,
+                                          sr = self.args['sr'],
+                                          n_mfcc = self.args['n_mfcc'],
+                                          fmax = self.args['fmax'],
+                                          n_fft = self.n_fft,
+                                          win_length = self.win_length,
+                                          hop_length = self.hop_length,
+                                          lifter = self.lifter)
+        
+        # Feature Normalisation using CMVNW method 
+        mfcc_Ref = speechpy.processing.cmvnw(mfcc_Ref.T,
+                                             win_size = 201,
+                                             variance_normalization = True).T
+        
+        mfcc_Coded = speechpy.processing.cmvnw(mfcc_Coded.T,
+                                               win_size = 201,
+                                               variance_normalization = True).T
+        
+        # Divid MFCC features of Coded speech into patches
+        cols = int(self.args['patch_size']/(self.hop_length/self.args['sr']))
+        window_shape = (np.size(mfcc_Ref,0), cols)
+        step  = int(cols/2)
+        
+        mfcc_Coded_patch = view_as_windows(mfcc_Coded, window_shape, step)
+
+        Acc =[]
+        #band_rad = 0.25  
+        #weights_mul = np.array([1, 1, 1])
+         
+        # Compute alignment cost between each patch and Ref MFCCs        
+        for i in range(mfcc_Coded_patch.shape[1]):    
+            
+            patch = mfcc_Coded_patch[0][i]
+            score = self.compute_alignment_cost(patch, mfcc_Ref)
+            Acc.append(score)  
+        
+        # Raw quality score
+        rawScore = round(np.median(Acc), 3) #Eq. 3 in [1] 
+        
+        # Return scores
+        return rawScore
     
     def evaluate(self, ref_path, test_path):
         ''' 
@@ -308,4 +389,3 @@ class warpqMetric(object):
         
         # Return scores
         return rawScore, mappedScore
- 

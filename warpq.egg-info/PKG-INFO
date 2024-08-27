@@ -1,0 +1,18 @@
+Metadata-Version: 2.1
+Name: warpq
+Version: 0.0.1
+Summary: A package for wraping the WARP-Q metric
+Home-page: https://github.com/ftshijt/WARP-Q.git
+Author: Jiatong Shi
+Author-email: ftshijt@gmail.com
+Keywords: speech metrics
+License-File: LICENSE
+Requires-Dist: librosa
+Requires-Dist: pyvad
+Requires-Dist: scikit-image
+Requires-Dist: speechpy
+Requires-Dist: soundfile
+Requires-Dist: pandas
+Requires-Dist: scikit-learn
+Requires-Dist: keras
+Requires-Dist: zipp
